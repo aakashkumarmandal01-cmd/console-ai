@@ -1,2 +1,6 @@
 streamlit>=1.50,<2.0
 google-genai>=1.50,<2.0
+groq
+mistralai
+cerebras-cloud-sdk
+openai
