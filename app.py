@@ -43,8 +43,6 @@ models = [
     "Gemini 3.8 Flash",
     "Gemini 3.7 Flash",
     "Groq",
-    "Mistral",
-    "Cerebras",
     "OpenRouter",
 ]
 
