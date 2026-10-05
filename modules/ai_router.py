@@ -4,7 +4,6 @@ from typing import List, Dict, Tuple
 
 from google import genai
 from groq import Groq
-from mistralai import Mistral
 from cerebras.cloud.sdk import Cerebras
 from openai import OpenAI
 
@@ -51,14 +50,18 @@ def _groq(messages: List[Dict]) -> str:
     return response.choices[0].message.content or ""
 
 
-def _mistral(messages: List[Dict]) -> str:
+def _mistral(messages):
     key = _secret("MISTRAL_API_KEY")
+
     if not key:
         raise RuntimeError("Mistral API key is missing.")
 
-    client = Mistral(api_key=key)
+    client = OpenAI(
+        api_key=key,
+        base_url="https://api.mistral.ai/v1",
+    )
 
-    response = client.chat.complete(
+    response = client.chat.completions.create(
         model="mistral-small-latest",
         messages=messages,
     )
