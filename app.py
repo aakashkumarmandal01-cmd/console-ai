@@ -110,28 +110,23 @@ if conversation is None:
 # HEADER
 # ---------------------------------------------------------
 
-st.markdown(
-f"""
-<div class="console-header">
-    <div class="header-brand">
-        <div class="brand-orb">🤖</div>
-
-        <div>
-            <div class="brand-title">CONSOLE AI</div>
-            <div class="brand-subtitle">
-                {get_conversation_title(conversation)}
-            </div>
-        </div>
-    </div>
-
-    <div class="header-status">
-        <span class="status-dot"></span>
-        Auto AI
-    </div>
-</div>
-""",
-unsafe_allow_html=True,
+header_html = (
+    f'<div class="console-header">'
+    f'<div class="header-brand">'
+    f'<div class="brand-orb">🤖</div>'
+    f'<div>'
+    f'<div class="brand-title">CONSOLE AI</div>'
+    f'<div class="brand-subtitle">{get_conversation_title(conversation)}</div>'
+    f'</div>'
+    f'</div>'
+    f'<div class="header-status">'
+    f'<span class="status-dot"></span>'
+    f'Auto AI'
+    f'</div>'
+    f'</div>'
 )
+
+st.markdown(header_html, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------
