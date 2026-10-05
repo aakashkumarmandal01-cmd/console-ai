@@ -1,30 +1,34 @@
 import os
-import time
 from typing import List, Dict, Tuple
 
 from google import genai
 from groq import Groq
-from cerebras.cloud.sdk import Cerebras
 from openai import OpenAI
 
 
 def _secret(name: str):
     try:
         import streamlit as st
-        return st.secrets.get(name) or os.getenv(name)
+        value = st.secrets.get(name)
+        if value:
+            return value
     except Exception:
-        return os.getenv(name)
+        pass
+
+    return os.getenv(name)
 
 
 def _gemini(messages: List[Dict]) -> str:
     key = _secret("GEMINI_API_KEY")
+
     if not key:
-        raise RuntimeError("Gemini API key is missing.")
+        raise RuntimeError("Gemini API key not configured.")
 
     client = genai.Client(api_key=key)
 
     prompt = "\n\n".join(
-        f"{m['role'].upper()}: {m['content']}" for m in messages
+        f"{m['role'].upper()}: {m['content']}"
+        for m in messages
     )
 
     response = client.models.generate_content(
@@ -37,8 +41,9 @@ def _gemini(messages: List[Dict]) -> str:
 
 def _groq(messages: List[Dict]) -> str:
     key = _secret("GROQ_API_KEY")
+
     if not key:
-        raise RuntimeError("Groq API key is missing.")
+        raise RuntimeError("Groq API key not configured.")
 
     client = Groq(api_key=key)
 
@@ -50,44 +55,11 @@ def _groq(messages: List[Dict]) -> str:
     return response.choices[0].message.content or ""
 
 
-def _mistral(messages):
-    key = _secret("MISTRAL_API_KEY")
-
-    if not key:
-        raise RuntimeError("Mistral API key is missing.")
-
-    client = OpenAI(
-        api_key=key,
-        base_url="https://api.mistral.ai/v1",
-    )
-
-    response = client.chat.completions.create(
-        model="mistral-small-latest",
-        messages=messages,
-    )
-
-    return response.choices[0].message.content or ""
-
-
-def _cerebras(messages: List[Dict]) -> str:
-    key = _secret("CEREBRAS_API_KEY")
-    if not key:
-        raise RuntimeError("Cerebras API key is missing.")
-
-    client = Cerebras(api_key=key)
-
-    response = client.chat.completions.create(
-        model="llama-3.3-70b",
-        messages=messages,
-    )
-
-    return response.choices[0].message.content or ""
-
-
 def _openrouter(messages: List[Dict]) -> str:
     key = _secret("OPENROUTER_API_KEY")
+
     if not key:
-        raise RuntimeError("OpenRouter API key is missing.")
+        raise RuntimeError("OpenRouter API key not configured.")
 
     client = OpenAI(
         api_key=key,
@@ -103,42 +75,35 @@ def _openrouter(messages: List[Dict]) -> str:
 
 
 PROVIDERS = [
-    ("Gemini", _gemini),
     ("Groq", _groq),
-    ("Mistral", _mistral),
-    ("Cerebras", _cerebras),
+    ("Gemini", _gemini),
     ("OpenRouter", _openrouter),
 ]
 
 
-def generate_response(messages: List[Dict]) -> Tuple[str, str]:
+def generate_response(
+    messages: List[Dict],
+) -> Tuple[str, str]:
+
     errors = []
 
-    for provider_name, provider_function in PROVIDERS:
-        for attempt in range(2):
-            try:
-                result = provider_function(messages)
+    for provider_name, provider in PROVIDERS:
 
-                if result.strip():
-                    return result, provider_name
+        try:
+            response = provider(messages)
 
-            except Exception as exc:
-                error_text = str(exc)
-                errors.append(f"{provider_name}: {error_text}")
+            if response.strip():
+                return response, provider_name
 
-                # Retry temporary/rate-limit errors once.
-                temporary = any(
-                    code in error_text
-                    for code in ("429", "500", "502", "503", "504", "timeout")
-                )
+        except Exception as exc:
 
-                if temporary and attempt == 0:
-                    time.sleep(1)
-                    continue
+            errors.append(
+                f"{provider_name}: {exc}"
+            )
 
-                break
+            # Immediately move to the next provider.
+            continue
 
     raise RuntimeError(
-        "All configured AI providers failed.\n\n"
-        + "\n".join(errors[-5:])
-              )
+        "All configured AI providers are unavailable."
+    )
