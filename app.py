@@ -1,315 +1,103 @@
-from __future__ import annotations
+import os
 
 import streamlit as st
-
-from modules.chat_manager import (
-    add_message,
-    create_conversation,
-    delete_conversation,
-    ensure_state,
-    get_active_conversation,
-    get_conversation_title,
-    regenerate_last_response,
-    set_active_conversation,
-)
-
-from modules.ai_router import generate_response
-
-from modules.ui import (
-    inject_css,
-    render_sidebar,
-    render_message,
-    render_welcome,
-)
+from google import genai
+from groq import Groq
+from openai import OpenAI
 
 
-st.set_page_config(
-    page_title="CONSOLE AI Chatbot",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+def get_key(name):
+    try:
+        value = st.secrets.get(name)
+        if value:
+            return value
+    except Exception:
+        pass
 
-inject_css()
-ensure_state()
-
-
-# ---------------------------------------------------------
-# MODEL DISPLAY
-# ---------------------------------------------------------
-
-models = [
-    "Auto / Best Available",
-    "Gemini 3.8 Flash",
-    "Gemini 3.7 Flash",
-    "Groq",
-    "OpenRouter",
-]
-
-if "selected_model" not in st.session_state:
-    st.session_state.selected_model = "Auto / Best Available"
+    return os.getenv(name)
 
 
-# ---------------------------------------------------------
-# SIDEBAR
-# ---------------------------------------------------------
+def call_groq(messages):
+    key = get_key("GROQ_API_KEY")
 
-sidebar_action = render_sidebar(
-    conversations=st.session_state.conversations,
-    active_id=st.session_state.active_conversation_id,
-    selected_model=st.session_state.selected_model,
-    models=models,
-    api_active=True,
-)
+    if not key:
+        raise RuntimeError("Groq API key is not configured.")
 
+    client = Groq(api_key=key)
 
-if sidebar_action:
-    action = sidebar_action.get("action")
-
-    if action == "new_chat":
-        new_id = create_conversation(
-            st.session_state.conversations
-        )
-        st.session_state.active_conversation_id = new_id
-        st.rerun()
-
-    elif action == "select_chat":
-        set_active_conversation(
-            sidebar_action["conversation_id"]
-        )
-        st.rerun()
-
-    elif action == "delete_chat":
-        delete_conversation(
-            sidebar_action["conversation_id"]
-        )
-        st.rerun()
-
-    elif action == "set_model":
-        st.session_state.selected_model = sidebar_action["model"]
-        st.rerun()
-
-
-# ---------------------------------------------------------
-# ACTIVE CONVERSATION
-# ---------------------------------------------------------
-
-conversation = get_active_conversation()
-
-if conversation is None:
-    new_id = create_conversation(
-        st.session_state.conversations
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+        temperature=0.7,
     )
 
-    st.session_state.active_conversation_id = new_id
-
-    conversation = get_active_conversation()
+    return response.choices[0].message.content
 
 
-# ---------------------------------------------------------
-# HEADER
-# ---------------------------------------------------------
+def call_gemini(messages):
+    key = get_key("GEMINI_API_KEY")
 
-header_html = (
-    f'<div class="console-header">'
-    f'<div class="header-brand">'
-    f'<div class="brand-orb">🤖</div>'
-    f'<div>'
-    f'<div class="brand-title">CONSOLE AI</div>'
-    f'<div class="brand-subtitle">{get_conversation_title(conversation)}</div>'
-    f'</div>'
-    f'</div>'
-    f'<div class="header-status">'
-    f'<span class="status-dot"></span>'
-    f'Auto AI'
-    f'</div>'
-    f'</div>'
-)
+    if not key:
+        raise RuntimeError("Gemini API key is not configured.")
 
-st.markdown(header_html, unsafe_allow_html=True)
+    client = genai.Client(api_key=key)
 
-
-# ---------------------------------------------------------
-# CHAT HISTORY
-# ---------------------------------------------------------
-
-messages = conversation["messages"]
-
-if not messages:
-    render_welcome()
-
-else:
-
-    for index, message in enumerate(messages):
-
-        render_message(
-            message,
-            index=index
-        )
-
-
-# ---------------------------------------------------------
-# CHAT ACTIONS
-# ---------------------------------------------------------
-
-if messages and messages[-1]["role"] == "assistant":
-
-    action_col1, action_col2, _ = st.columns(
-        [1, 1, 8]
+    prompt = "\n\n".join(
+        f"{message['role']}: {message['content']}"
+        for message in messages
     )
 
-    with action_col1:
-
-        if st.button(
-            "↻ Regenerate",
-            key=f"regen_{conversation['id']}"
-        ):
-
-            regenerate_last_response(
-                conversation
-            )
-
-            st.session_state.regenerate_pending = True
-
-            st.rerun()
-
-
-    with action_col2:
-
-        if st.button(
-            "🗑 Clear",
-            key=f"clear_{conversation['id']}"
-        ):
-
-            conversation["messages"] = []
-
-            conversation["title"] = "New Conversation"
-
-            st.rerun()
-
-
-# ---------------------------------------------------------
-# USER INPUT
-# ---------------------------------------------------------
-
-example_prompt = st.session_state.pop(
-    "example_prompt",
-    None
-)
-
-regenerate_pending = st.session_state.pop(
-    "regenerate_pending",
-    False
-)
-
-prompt = (
-    example_prompt
-    or st.chat_input(
-        "Ask a question, request code, or explore ideas…"
-    )
-)
-
-
-# ---------------------------------------------------------
-# NEW USER MESSAGE
-# ---------------------------------------------------------
-
-if prompt and prompt.strip():
-
-    user_text = prompt.strip()
-
-    add_message(
-        conversation,
-        "user",
-        user_text
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
     )
 
-    if conversation["title"] == "New Conversation":
-
-        conversation["title"] = (
-            user_text
-            .replace("\n", " ")
-            .strip()[:48]
-        )
-
-    with st.chat_message(
-        "user",
-        avatar="👤"
-    ):
-
-        st.markdown(user_text)
+    return response.text
 
 
-# ---------------------------------------------------------
-# AI GENERATION
-# ---------------------------------------------------------
+def call_openrouter(messages):
+    key = get_key("OPENROUTER_API_KEY")
 
-if regenerate_pending or (
-    prompt and prompt.strip()
-):
+    if not key:
+        raise RuntimeError("OpenRouter API key is not configured.")
 
-    with st.chat_message(
-        "assistant",
-        avatar="🤖"
-    ):
+    client = OpenAI(
+        api_key=key,
+        base_url="https://openrouter.ai/api/v1",
+    )
 
-        status = st.empty()
+    response = client.chat.completions.create(
+        model="openrouter/free",
+        messages=messages,
+        temperature=0.7,
+    )
 
-        response_box = st.empty()
+    return response.choices[0].message.content
 
-        status.markdown(
-            """
-            <div class="thinking">
-                ● ● ●
-                <span>
-                    CONSOLE AI is thinking…
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+
+def generate_response(messages):
+
+    providers = [
+        ("Groq", call_groq),
+        ("Gemini", call_gemini),
+        ("OpenRouter", call_openrouter),
+    ]
+
+    errors = []
+
+    for name, function in providers:
 
         try:
+            answer = function(messages)
 
-            # -------------------------------------------------
-            # AUTOMATIC PROVIDER ROUTER
-            # -------------------------------------------------
+            if answer and answer.strip():
+                return answer, name
 
-            response, provider = generate_response(
-                conversation["messages"]
-            )
+        except Exception as error:
+            errors.append(f"{name}: {error}")
+            continue
 
-            status.empty()
-
-            response_box.markdown(
-                response
-            )
-
-            add_message(
-                conversation,
-                "assistant",
-                response
-            )
-
-        except Exception as exc:
-
-            status.empty()
-
-            error_message = str(exc)
-
-            friendly = (
-                "⚠️ **Unable to complete the request.**\n\n"
-                f"{error_message}"
-            )
-
-            response_box.markdown(
-                friendly
-            )
-
-            add_message(
-                conversation,
-                "assistant",
-                friendly
-            )
-
-    st.rerun()
+    raise RuntimeError(
+        "All configured AI providers failed.\n\n"
+        + "\n".join(errors)
+    )
