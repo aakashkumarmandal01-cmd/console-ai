@@ -111,34 +111,26 @@ if conversation is None:
 # ---------------------------------------------------------
 
 st.markdown(
-    f"""
-    <div class="console-header">
-        <div class="header-brand">
+f"""
+<div class="console-header">
+    <div class="header-brand">
+        <div class="brand-orb">🤖</div>
 
-            <div class="brand-orb">
-                🤖
+        <div>
+            <div class="brand-title">CONSOLE AI</div>
+            <div class="brand-subtitle">
+                {get_conversation_title(conversation)}
             </div>
-
-            <div>
-                <div class="brand-title">
-                    CONSOLE AI
-                </div>
-
-                <div class="brand-subtitle">
-                    {get_conversation_title(conversation)}
-                </div>
-            </div>
-
         </div>
-
-        <div class="header-status">
-            <span class="status-dot"></span>
-            Auto AI
-        </div>
-
     </div>
-    """,
-    unsafe_allow_html=True,
+
+    <div class="header-status">
+        <span class="status-dot"></span>
+        Auto AI
+    </div>
+</div>
+""",
+unsafe_allow_html=True,
 )
 
 
